@@ -9,3 +9,4 @@ scapy==2.5.0
 
 # System utilities
 psutil==5.9.7
+gunicorn
