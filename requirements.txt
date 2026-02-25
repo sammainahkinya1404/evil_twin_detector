@@ -1,0 +1,11 @@
+# Evil Twin Attack Detection System - Dependencies
+
+# Web Framework
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# WiFi Scanning (optional - for deep packet analysis)
+scapy==2.5.0
+
+# System utilities
+psutil==5.9.7

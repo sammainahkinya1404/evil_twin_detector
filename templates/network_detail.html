@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Network Details - Evil Twin Detector{% endblock %}
+{% block content %}
+<section class="detail-section">
+    {% if network %}
+    <div class="detail-header">
+        <h1>{{ network.ssid }}</h1>
+        <span class="badge badge-{{ network.risk_level }}">{{ network.risk_level|upper }} RISK ({{ network.risk_score }}/100)</span>
+    </div>
+    <div class="detail-grid">
+        <div class="detail-card">
+            <h3>Network Information</h3>
+            <div class="detail-row"><span>SSID:</span><span class="mono">{{ network.ssid }}</span></div>
+            <div class="detail-row"><span>BSSID:</span><span class="mono">{{ network.bssid }}</span></div>
+            <div class="detail-row"><span>Channel:</span><span>{{ network.channel }}</span></div>
+            <div class="detail-row"><span>Frequency:</span><span>{{ network.frequency }}</span></div>
+            <div class="detail-row"><span>Encryption:</span><span>{{ network.encryption }}</span></div>
+            <div class="detail-row"><span>Signal:</span><span>{{ network.signal_strength }} dBm</span></div>
+            <div class="detail-row"><span>Vendor:</span><span>{{ network.vendor }}</span></div>
+        </div>
+        <div class="detail-card">
+            <h3>Risk Factors</h3>
+            {% for factor in network.risk_factors %}
+            <div class="risk-factor-item">
+                <div class="risk-factor-header">
+                    <span class="risk-factor-name">{{ factor.factor if factor is mapping else factor }}</span>
+                    {% if factor is mapping %}
+                    <span class="badge badge-{{ factor.severity }}">{{ factor.severity|upper }}</span>
+                    {% endif %}
+                </div>
+                {% if factor is mapping %}
+                <p class="risk-factor-detail">{{ factor.detail }}</p>
+                {% endif %}
+            </div>
+            {% else %}
+            <p class="text-muted">No risk factors detected.</p>
+            {% endfor %}
+        </div>
+    </div>
+    <a href="/" class="btn-back">&larr; Back to Dashboard</a>
+    {% else %}
+    <div class="empty-state"><p>Network not found.</p></div>
+    <a href="/" class="btn-back">&larr; Back to Dashboard</a>
+    {% endif %}
+</section>
+{% endblock %}

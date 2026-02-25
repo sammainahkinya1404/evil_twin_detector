@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Evil Twin Detector{% endblock %}
+
+{% block content %}
+<!-- Scan Control Panel -->
+<section class="scan-panel">
+    <div class="scan-header">
+        <div>
+            <h1 class="page-title">Network Scanner</h1>
+            <p class="page-subtitle">Real-time WiFi threat detection & Evil Twin analysis</p>
+        </div>
+        <button class="btn-scan" id="btnScan" onclick="startScan()">
+            <svg class="scan-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="1"/>
+                <path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5z"/>
+                <path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5z"/>
+            </svg>
+            <span id="btnScanText">Start Scan</span>
+        </button>
+    </div>
+
+    <!-- Simulation Mode Panel -->
+    <div class="sim-panel">
+        <button class="btn-sim-toggle" onclick="toggleSimPanel()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            Simulate Attack
+        </button>
+        <div class="sim-dropdown" id="simDropdown" style="display:none;">
+            <div class="sim-dropdown-header">
+                <h3>Attack Scenarios</h3>
+                <p>Select a scenario to simulate fake threats for testing</p>
+            </div>
+            <div class="sim-scenarios" id="simScenarios">
+                <!-- Filled by JS -->
+                <div class="sim-loading">Loading scenarios...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scanning Animation -->
+    <div class="scan-animation" id="scanAnimation" style="display:none;">
+        <div class="radar">
+            <div class="radar-sweep"></div>
+            <div class="radar-ring ring-1"></div>
+            <div class="radar-ring ring-2"></div>
+            <div class="radar-ring ring-3"></div>
+            <div class="radar-dot"></div>
+        </div>
+        <p class="scan-status-text" id="scanStatusText">Scanning nearby networks...</p>
+    </div>
+</section>
+
+<!-- Statistics Cards -->
+<section class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon stat-icon-total">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+                <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+                <circle cx="12" cy="20" r="1"/>
+            </svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="statTotalNetworks">{{ stats.get('unique_networks', 0) }}</span>
+            <span class="stat-label">Networks Detected</span>
+        </div>
+    </div>
+    <div class="stat-card stat-card-danger">
+        <div class="stat-icon stat-icon-danger">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="statHighRisk">{{ stats.get('high_risk_detections', 0) }}</span>
+            <span class="stat-label">High Risk Alerts</span>
+        </div>
+    </div>
+    <div class="stat-card stat-card-warning">
+        <div class="stat-icon stat-icon-warning">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="statMediumRisk">{{ stats.get('total_alerts', 0) }}</span>
+            <span class="stat-label">Total Alerts</span>
+        </div>
+    </div>
+    <div class="stat-card stat-card-success">
+        <div class="stat-icon stat-icon-success">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value" id="statTotalScans">{{ stats.get('total_scans', 0) }}</span>
+            <span class="stat-label">Total Scans</span>
+        </div>
+    </div>
+</section>
+
+<!-- Threat Summary Banner -->
+<section class="threat-banner" id="threatBanner" style="display:none;">
+    <div class="threat-content">
+        <div class="threat-icon" id="threatIcon"></div>
+        <div class="threat-text">
+            <h3 id="threatTitle"></h3>
+            <p id="threatMessage"></p>
+        </div>
+    </div>
+</section>
+
+<!-- Networks Table -->
+<section class="networks-section">
+    <div class="section-header">
+        <h2>Detected Networks</h2>
+        <div class="filter-group">
+            <button class="filter-btn active" onclick="filterNetworks('all')" data-filter="all">All</button>
+            <button class="filter-btn" onclick="filterNetworks('high')" data-filter="high">High Risk</button>
+            <button class="filter-btn" onclick="filterNetworks('medium')" data-filter="medium">Medium</button>
+            <button class="filter-btn" onclick="filterNetworks('low')" data-filter="low">Safe</button>
+        </div>
+    </div>
+
+    <div class="networks-table-wrapper">
+        <table class="networks-table" id="networksTable">
+            <thead>
+                <tr>
+                    <th>Risk</th>
+                    <th>SSID</th>
+                    <th>BSSID</th>
+                    <th>Signal</th>
+                    <th>Channel</th>
+                    <th>Encryption</th>
+                    <th>Vendor</th>
+                    <th>Score</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="networksTableBody">
+                <tr class="empty-row">
+                    <td colspan="9">
+                        <div class="empty-state">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+                                <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+                                <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+                                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+                                <circle cx="12" cy="20" r="1"/>
+                            </svg>
+                            <p>No networks scanned yet. Click <strong>Start Scan</strong> to begin.</p>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- Network Detail Modal -->
+<div class="modal-overlay" id="networkModal" style="display:none;" onclick="closeModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal-header">
+            <h2 id="modalSSID">Network Details</h2>
+            <div class="modal-risk-badge" id="modalRiskBadge"></div>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <!-- Filled dynamically -->
+        </div>
+    </div>
+</div>
+
+<!-- Recent Alerts -->
+<section class="alerts-section">
+    <div class="section-header">
+        <h2>Recent Alerts</h2>
+    </div>
+    <div class="alerts-list" id="alertsList">
+        {% if alerts %}
+            {% for alert in alerts %}
+            <div class="alert-item alert-{{ alert.risk_level }}">
+                <div class="alert-indicator"></div>
+                <div class="alert-content">
+                    <div class="alert-header-row">
+                        <strong>{{ alert.ssid }}</strong>
+                        <span class="alert-badge badge-{{ alert.risk_level }}">{{ alert.risk_level|upper }}</span>
+                    </div>
+                    <p class="alert-message">{{ alert.message[:200] }}</p>
+                    <span class="alert-time">{{ alert.timestamp }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-alerts">
+                <p>No alerts yet. Run a scan to detect potential threats.</p>
+            </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Scan History - Evil Twin Detector{% endblock %}
+
+{% block content %}
+<section class="history-section">
+    <div class="section-header">
+        <div>
+            <h1 class="page-title">Scan History</h1>
+            <p class="page-subtitle">Historical record of all WiFi security scans</p>
+        </div>
+    </div>
+
+    <div class="history-table-wrapper">
+        <table class="networks-table">
+            <thead>
+                <tr>
+                    <th>Scan ID</th>
+                    <th>Timestamp</th>
+                    <th>Networks Found</th>
+                    <th>High Risk</th>
+                    <th>Medium Risk</th>
+                    <th>Low Risk</th>
+                    <th>Threat Level</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if scans %}
+                    {% for scan in scans %}
+                    <tr>
+                        <td><span class="mono">#{{ scan.id }}</span></td>
+                        <td>{{ scan.timestamp }}</td>
+                        <td>{{ scan.total_networks }}</td>
+                        <td>
+                            {% if scan.high_risk_count > 0 %}
+                                <span class="badge badge-high">{{ scan.high_risk_count }}</span>
+                            {% else %}
+                                <span class="text-muted">0</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if scan.medium_risk_count > 0 %}
+                                <span class="badge badge-medium">{{ scan.medium_risk_count }}</span>
+                            {% else %}
+                                <span class="text-muted">0</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ scan.low_risk_count }}</td>
+                        <td>
+                            <span class="threat-level-badge threat-{{ scan.threat_level }}">
+                                {{ scan.threat_level|upper }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7">
+                            <div class="empty-state">
+                                <p>No scan history yet. Run your first scan from the Dashboard.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
