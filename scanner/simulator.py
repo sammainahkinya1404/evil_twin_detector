@@ -25,6 +25,7 @@ class ThreatSimulator:
     """Generates realistic Evil Twin attack scenarios."""
 
     def __init__(self):
+        self.last_threat_bssids = set()
         self.scenarios = {
             'coffee_shop': self._scenario_coffee_shop,
             'corporate': self._scenario_corporate,
@@ -102,6 +103,14 @@ class ThreatSimulator:
             raise ValueError(f"Unknown scenario: {scenario_id}. Available: {list(self.scenarios.keys())}")
 
         networks = generator()
+
+        # Ground truth for testing/evaluation: which BSSIDs are planted threats.
+        # The label is removed from the network dicts so the detector (and the
+        # dashboard) only ever see what a real scan would provide.
+        self.last_threat_bssids = {
+            net['bssid'] for net in networks if net.pop('_threat', False)
+        }
+
         # Add slight random variation to make each run unique
         for net in networks:
             net['signal_strength'] += random.randint(-3, 3)
@@ -153,6 +162,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - same name, open, stronger signal
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'Brew & Bean WiFi',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -28,
@@ -173,6 +183,7 @@ class ThreatSimulator:
             },
             # 🚨 Suspicious free WiFi honeypot
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'Free Coffee WiFi',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -35,
@@ -255,6 +266,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - Corporate clone with WPA (downgrade)
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'TechVentures-Corp',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -30,
@@ -275,6 +287,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - Guest network clone (open)
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'TechVentures-Guest',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -32,
@@ -285,6 +298,7 @@ class ThreatSimulator:
             },
             # 🚨 Hidden rogue AP
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': '<Hidden>',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -38,
@@ -367,6 +381,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - Airport clone (open)
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'Airport-FreeWiFi',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -25,
@@ -377,6 +392,7 @@ class ThreatSimulator:
             },
             # 🚨 Fake free WiFi honeypot 1
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'Free_Airport_Internet',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -30,
@@ -387,6 +403,7 @@ class ThreatSimulator:
             },
             # 🚨 Fake free WiFi honeypot 2
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'FREE-WIFI-AIRPORT',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -28,
@@ -397,6 +414,7 @@ class ThreatSimulator:
             },
             # 🚨 Airline lounge fake
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'SkyLounge-Premium',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -33,
@@ -508,6 +526,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - eduroam clone (WPA instead of Enterprise)
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'eduroam',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -25,
@@ -518,6 +537,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - eduroam open clone
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'eduroam',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -30,
@@ -538,6 +558,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - Library clone
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'UniLibrary-WiFi',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -22,
@@ -558,6 +579,7 @@ class ThreatSimulator:
             },
             # 🚨 Fake free WiFi
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'University-Free-WiFi',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -32,
@@ -568,6 +590,7 @@ class ThreatSimulator:
             },
             # 🚨 Hidden rogue
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': '<Hidden>',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -35,
@@ -659,6 +682,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - Hotel clone (open, for captive portal phishing)
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'GrandHotel-Guest',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -26,
@@ -679,6 +703,7 @@ class ThreatSimulator:
             },
             # 🚨 Fake conference clone
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'GrandHotel-Conference',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -30,
@@ -689,6 +714,7 @@ class ThreatSimulator:
             },
             # 🚨 Generic hotel honeypot
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'Hotel-Free-Internet',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -33,
@@ -750,6 +776,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - Mall clone
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'MegaMall-WiFi',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -22,
@@ -770,6 +797,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - Starbucks clone
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'Starbucks WiFi',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -28,
@@ -790,6 +818,7 @@ class ThreatSimulator:
             },
             # 🚨 EVIL TWIN - carrier clone
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'xfinitywifi',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -30,
@@ -800,6 +829,7 @@ class ThreatSimulator:
             },
             # 🚨 Honeypot 1
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'Free_Public_WiFi',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -25,
@@ -810,6 +840,7 @@ class ThreatSimulator:
             },
             # 🚨 Honeypot 2
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': 'FREE INTERNET',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -27,
@@ -820,6 +851,7 @@ class ThreatSimulator:
             },
             # 🚨 Hidden rogue
             {
+                '_threat': True,  # ground-truth label, removed before analysis
                 'ssid': '<Hidden>',
                 'bssid': self._locally_administered_mac(),
                 'signal_strength': -32,

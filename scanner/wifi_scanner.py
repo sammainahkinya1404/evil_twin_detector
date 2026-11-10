@@ -9,6 +9,7 @@ Scans for nearby WiFi networks using multiple methods:
 Each method returns a standardized list of network dictionaries.
 """
 
+import os
 import subprocess
 import platform
 import re
@@ -24,18 +25,27 @@ class WiFiScanner:
         self.os_type = platform.system().lower()
         self.scan_method = self._detect_scan_method()
         self.previous_scan = []
+        self.last_scan_mode = None   # 'live' or 'demo' after each scan
+        self.last_scan_note = None   # why demo data was used (shown on the dashboard)
         print(f"[Scanner] OS: {self.os_type}, Method: {self.scan_method}")
 
-    def _detect_scan_method(self):
-        """Detect the best available scanning method."""
-        # Try scapy first (most detailed)
+    def _scapy_usable(self):
+        """
+        Scapy beacon sniffing only works on Linux, as root, with an interface
+        in monitor mode. Previously scapy was chosen whenever it was importable,
+        so on Windows (where it is installed by requirements.txt) every scan
+        sniffed for 10 seconds and returned 0 networks, even though netsh worked.
+        """
+        if self.os_type != 'linux' or not hasattr(os, 'geteuid') or os.geteuid() != 0:
+            return False
         try:
-            import scapy.all
-            return 'scapy'
+            import scapy.all  # noqa: F401
+            return True
         except ImportError:
-            pass
+            return False
 
-        # Try system tools
+    def _system_scan_method(self):
+        """Pick the OS scanning tool (used directly, or as scapy's fallback)."""
         if self.os_type == 'linux':
             # Check for nmcli (NetworkManager)
             try:
@@ -69,6 +79,12 @@ class WiFiScanner:
 
         return 'none'
 
+    def _detect_scan_method(self):
+        """Detect the best available scanning method."""
+        if self._scapy_usable():
+            return 'scapy'
+        return self._system_scan_method()
+
     def scan(self):
         """
         Perform a WiFi scan and return a list of detected networks.
@@ -86,37 +102,48 @@ class WiFiScanner:
         print(f"[Scanner] Starting scan using {self.scan_method}...")
         start_time = time.time()
 
+        # Assume live data; _generate_demo_data() switches this to 'demo' so
+        # the dashboard can tell the user when results are not real.
+        self.last_scan_mode = 'live'
+        self.last_scan_note = None
+
         try:
-            if self.scan_method == 'scapy':
-                networks = self._scan_scapy()
-            elif self.scan_method == 'nmcli':
-                networks = self._scan_nmcli()
-            elif self.scan_method == 'iwlist':
-                networks = self._scan_iwlist()
-            elif self.scan_method == 'iw':
-                networks = self._scan_iw()
-            elif self.scan_method == 'netsh':
-                networks = self._scan_netsh()
-            elif self.scan_method == 'airport':
-                networks = self._scan_airport()
-            else:
-                print("[Scanner] No scanning tool available. Using demo data.")
-                networks = self._generate_demo_data()
+            networks = self._run_method(self.scan_method)
+            if not networks and self.scan_method == 'scapy':
+                # Sniffing captured nothing (e.g. no monitor mode): use the OS tool.
+                fallback = self._system_scan_method()
+                print(f"[Scanner] Scapy captured no beacons, falling back to {fallback}.")
+                networks = self._run_method(fallback)
         except PermissionError:
             print("[Scanner] Permission denied. Try running with sudo.")
-            print("[Scanner] Falling back to demo data.")
-            networks = self._generate_demo_data()
+            networks = self._generate_demo_data('Permission denied while scanning. Try running with sudo.')
         except Exception as e:
             print(f"[Scanner] Scan error: {e}")
-            print("[Scanner] Falling back to demo data.")
-            networks = self._generate_demo_data()
+            networks = self._generate_demo_data(f'The {self.scan_method} scan failed: {e}')
 
         elapsed = time.time() - start_time
-        print(f"[Scanner] Scan complete: {len(networks)} networks found in {elapsed:.2f}s")
+        print(f"[Scanner] Scan complete: {len(networks)} networks found in {elapsed:.2f}s "
+              f"(mode: {self.last_scan_mode})")
 
         # Store for comparison in next scan
         self.previous_scan = networks
         return networks
+
+    def _run_method(self, method):
+        """Dispatch to one scanning back-end."""
+        handlers = {
+            'scapy': self._scan_scapy,
+            'nmcli': self._scan_nmcli,
+            'iwlist': self._scan_iwlist,
+            'iw': self._scan_iw,
+            'netsh': self._scan_netsh,
+            'airport': self._scan_airport,
+        }
+        handler = handlers.get(method)
+        if handler is None:
+            return self._generate_demo_data(
+                'No Wi-Fi scanning tool (nmcli, iwlist, iw, netsh or airport) was found on this machine.')
+        return handler()
 
     # ─────────────────────────────────────
     # Scanning Methods
@@ -223,9 +250,6 @@ class WiFiScanner:
 
     def _scan_nmcli(self):
         """Scan using NetworkManager's nmcli tool (Linux)."""
-        timestamp = datetime.now().isoformat()
-        networks = []
-
         try:
             # Trigger a fresh scan
             subprocess.run(['nmcli', 'device', 'wifi', 'rescan'],
@@ -244,59 +268,70 @@ class WiFiScanner:
                 print(f"[Scanner/nmcli] Error: {result.stderr}")
                 return self._generate_demo_data()
 
-            for line in result.stdout.strip().split('\n'):
-                if not line.strip():
-                    continue
-
-                # nmcli -t uses ':' as separator, but BSSID contains ':'
-                # Format: SSID:BSSID:CHAN:FREQ:SIGNAL:SECURITY:MODE
-                parts = line.split(':')
-                if len(parts) < 12:  # Minimum expected parts
-                    continue
-
-                # BSSID is 6 hex pairs separated by ':'
-                ssid = parts[0] if parts[0] else '<Hidden>'
-                # Reconstruct BSSID (parts 1-6 are the MAC octets due to : splitting)
-                bssid = ':'.join(parts[1:7]).strip().upper()
-                
-                try:
-                    channel = int(parts[7]) if parts[7].strip().isdigit() else 0
-                except (ValueError, IndexError):
-                    channel = 0
-
-                try:
-                    freq_mhz = parts[8].strip().replace(' MHz', '')
-                    frequency = "5GHz" if int(freq_mhz) > 3000 else "2.4GHz"
-                except (ValueError, IndexError):
-                    frequency = "2.4GHz"
-
-                try:
-                    signal_pct = int(parts[9]) if parts[9].strip().isdigit() else 0
-                    signal_dbm = self._percent_to_dbm(signal_pct)
-                except (ValueError, IndexError):
-                    signal_dbm = -100
-
-                try:
-                    encryption = parts[10].strip() if parts[10] else 'Open'
-                except IndexError:
-                    encryption = 'Unknown'
-
-                networks.append({
-                    'ssid': ssid,
-                    'bssid': bssid,
-                    'signal_strength': signal_dbm,
-                    'channel': channel,
-                    'frequency': frequency,
-                    'encryption': encryption,
-                    'timestamp': timestamp
-                })
+            networks = self._parse_nmcli(result.stdout, datetime.now().isoformat())
 
         except subprocess.TimeoutExpired:
             print("[Scanner/nmcli] Scan timed out")
+            networks = []
         except FileNotFoundError:
             print("[Scanner/nmcli] nmcli not found")
+            networks = []
 
         return networks if networks else self._generate_demo_data()
+
+    def _parse_nmcli(self, output, timestamp):
+        r"""
+        Parse `nmcli -t -f SSID,BSSID,CHAN,FREQ,SIGNAL,SECURITY,MODE` output.
+
+        In terse mode nmcli escapes ':' inside values as '\:' (BSSIDs always
+        contain colons). The previous parser split on every ':', so every
+        BSSID came out as 'AA\:BB\:...', which then failed MAC validation
+        and added a false 'MAC Address Anomaly' to every network.
+        """
+        networks = []
+        for line in output.splitlines():
+            if not line.strip():
+                continue
+
+            # Split only on unescaped ':' then unescape the values
+            parts = [re.sub(r'\\(.)', r'\1', p)
+                     for p in re.split(r'(?<!\\):', line)]
+            if len(parts) < 6:
+                continue
+            ssid, bssid, chan, freq, signal, security = parts[:6]
+
+            try:
+                channel = int(chan)
+            except ValueError:
+                channel = 0
+            try:
+                frequency = "5GHz" if int(freq.replace('MHz', '').strip()) > 3000 else "2.4GHz"
+            except ValueError:
+                frequency = "2.4GHz"
+            try:
+                signal_dbm = self._percent_to_dbm(int(signal))
+            except ValueError:
+                signal_dbm = -100
+
+            networks.append({
+                'ssid': ssid or '<Hidden>',
+                'bssid': bssid.strip().upper(),
+                'signal_strength': signal_dbm,
+                'channel': channel,
+                'frequency': frequency,
+                'encryption': self._normalise_security(security),
+                'timestamp': timestamp
+            })
+        return networks
+
+    @staticmethod
+    def _normalise_security(text):
+        """Map a tool's security description to WPA3 / WPA2 / WPA / WEP / Open."""
+        text = (text or '').upper()
+        for label in ('WPA3', 'WPA2', 'WPA', 'WEP'):
+            if label in text:
+                return label
+        return 'Open'
 
     def _scan_iwlist(self):
         """Scan using iwlist (Linux, requires root)."""
@@ -448,72 +483,139 @@ class WiFiScanner:
         return networks if networks else self._generate_demo_data()
 
     def _scan_netsh(self):
-        """Scan using netsh (Windows)."""
-        timestamp = datetime.now().isoformat()
-        networks = []
+        """
+        Scan using netsh (Windows).
 
+        `netsh wlan show networks` does not scan: it lists whatever Windows saw
+        in its last background scan, which happens rarely while the laptop is
+        connected to Wi-Fi. On the test laptop it reported 1 network when 7
+        were in range. We therefore ask Windows for a fresh scan first and give
+        the adapter a few seconds to collect beacons.
+        """
+        networks = []
         try:
+            if self._trigger_windows_scan():
+                time.sleep(self.WINDOWS_SCAN_WAIT)
             result = subprocess.run(
                 ['netsh', 'wlan', 'show', 'networks', 'mode=bssid'],
                 capture_output=True, text=True, timeout=15
             )
-
-            current_network = {}
-            for line in result.stdout.split('\n'):
-                line = line.strip()
-
-                if line.startswith('SSID') and 'BSSID' not in line:
-                    ssid_match = re.search(r'SSID\s+\d+\s*:\s*(.*)', line)
-                    if ssid_match:
-                        if current_network.get('bssid'):
-                            current_network['timestamp'] = timestamp
-                            networks.append(current_network)
-                        current_network = {
-                            'ssid': ssid_match.group(1).strip() or '<Hidden>',
-                            'bssid': '',
-                            'signal_strength': -100,
-                            'channel': 0,
-                            'frequency': '2.4GHz',
-                            'encryption': 'Open'
-                        }
-
-                elif 'BSSID' in line:
-                    bssid_match = re.search(r'BSSID\s+\d+\s*:\s*(.*)', line)
-                    if bssid_match:
-                        current_network['bssid'] = bssid_match.group(1).strip().upper()
-
-                elif 'Signal' in line:
-                    sig_match = re.search(r'(\d+)%', line)
-                    if sig_match:
-                        current_network['signal_strength'] = self._percent_to_dbm(int(sig_match.group(1)))
-
-                elif 'Channel' in line:
-                    ch_match = re.search(r':\s*(\d+)', line)
-                    if ch_match:
-                        ch = int(ch_match.group(1))
-                        current_network['channel'] = ch
-                        current_network['frequency'] = "5GHz" if ch > 14 else "2.4GHz"
-
-                elif 'Authentication' in line or 'Encryption' in line:
-                    if 'WPA3' in line:
-                        current_network['encryption'] = 'WPA3'
-                    elif 'WPA2' in line:
-                        current_network['encryption'] = 'WPA2'
-                    elif 'WPA' in line:
-                        current_network['encryption'] = 'WPA'
-                    elif 'WEP' in line:
-                        current_network['encryption'] = 'WEP'
-                    elif 'Open' in line:
-                        current_network['encryption'] = 'Open'
-
-            if current_network.get('bssid'):
-                current_network['timestamp'] = timestamp
-                networks.append(current_network)
-
+            output = (result.stdout or '') + (result.stderr or '')
+            networks = self._parse_netsh(result.stdout or '', datetime.now().isoformat())
+            if not networks and 'location' in output.lower():
+                # Windows 11 (24H2 and later) blocks WLAN listing without Location access
+                return self._generate_demo_data(
+                    'Windows blocked the Wi-Fi scan because Location access is off. Turn on '
+                    'Settings > Privacy & security > Location, including "Let desktop apps '
+                    'access your location", then scan again.')
         except Exception as e:
             print(f"[Scanner/netsh] Error: {e}")
+            return self._generate_demo_data(f'netsh failed: {e}')
 
-        return networks if networks else self._generate_demo_data()
+        if networks:
+            return networks
+        return self._generate_demo_data(
+            'netsh reported no Wi-Fi networks. Check that Wi-Fi is switched on and that a '
+            'wireless adapter is installed.')
+
+    # Seconds to wait after WlanScan; drivers must finish a scan within 4 s,
+    # and on the test laptop all networks appeared within 2 s.
+    WINDOWS_SCAN_WAIT = 3.0
+
+    def _load_wlanapi(self):
+        """Return the Windows Native Wifi API DLL (separate method so tests can replace it)."""
+        import ctypes
+        return ctypes.windll.wlanapi
+
+    def _trigger_windows_scan(self):
+        """
+        Ask every wireless interface for a fresh scan via WlanScan (wlanapi.dll).
+        Uses only the standard library (ctypes). Returns True if at least one
+        scan was requested; on any failure returns False and the cached list
+        is used, so this can never make a scan fail.
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        class GUID(ctypes.Structure):
+            _fields_ = [('Data1', wintypes.DWORD), ('Data2', wintypes.WORD),
+                        ('Data3', wintypes.WORD), ('Data4', ctypes.c_ubyte * 8)]
+
+        class InterfaceInfo(ctypes.Structure):
+            _fields_ = [('InterfaceGuid', GUID), ('strInterfaceDescription', ctypes.c_wchar * 256),
+                        ('isState', ctypes.c_uint)]
+
+        class InterfaceInfoList(ctypes.Structure):
+            _fields_ = [('dwNumberOfItems', wintypes.DWORD), ('dwIndex', wintypes.DWORD),
+                        ('InterfaceInfo', InterfaceInfo * 1)]
+
+        try:
+            wlan = self._load_wlanapi()
+            handle, version = wintypes.HANDLE(), wintypes.DWORD()
+            if wlan.WlanOpenHandle(2, None, ctypes.byref(version), ctypes.byref(handle)) != 0:
+                return False
+            requested = 0
+            try:
+                iface_list = ctypes.POINTER(InterfaceInfoList)()
+                if wlan.WlanEnumInterfaces(handle, None, ctypes.byref(iface_list)) != 0:
+                    return False
+                count = iface_list.contents.dwNumberOfItems
+                if count:
+                    items = ctypes.cast(ctypes.byref(iface_list.contents.InterfaceInfo),
+                                        ctypes.POINTER(InterfaceInfo * count)).contents
+                    for item in items:
+                        if wlan.WlanScan(handle, ctypes.byref(item.InterfaceGuid), None, None, None) == 0:
+                            requested += 1
+                wlan.WlanFreeMemory(iface_list)
+            finally:
+                wlan.WlanCloseHandle(handle, None)
+            return requested > 0
+        except (OSError, AttributeError, ValueError) as e:
+            print(f"[Scanner/netsh] Could not trigger a fresh scan ({e}); using cached results.")
+            return False
+
+    def _parse_netsh(self, output, timestamp):
+        """
+        Parse `netsh wlan show networks mode=bssid` output.
+
+        netsh lists every access point (BSSID 1, BSSID 2, ...) under the SSID
+        block it belongs to. The previous parser kept a single dict per SSID
+        and overwrote its BSSID for each AP, so only the *last* access point
+        of every SSID survived - which hid exactly the same-name duplicates
+        the detector needs to see.
+        """
+        networks = []
+        ssid, encryption, current = None, 'Open', None
+
+        for raw in output.splitlines():
+            line = raw.strip()
+            key, _, value = line.partition(':')
+            key, value = key.strip(), value.strip()
+
+            if re.match(r'^SSID \d+$', key):
+                ssid, encryption, current = value or '<Hidden>', 'Open', None
+            elif key == 'Authentication':
+                encryption = self._normalise_security(value)
+            elif re.match(r'^BSSID \d+$', key) and ssid is not None:
+                current = {
+                    'ssid': ssid,
+                    'bssid': value.upper(),
+                    'signal_strength': -100,
+                    'channel': 0,
+                    'frequency': '2.4GHz',
+                    'encryption': encryption,
+                    'timestamp': timestamp,
+                }
+                networks.append(current)
+            elif current is not None and key == 'Signal':
+                pct = re.search(r'(\d+)%', value)
+                if pct:
+                    current['signal_strength'] = self._percent_to_dbm(int(pct.group(1)))
+            elif current is not None and key == 'Channel' and value.isdigit():
+                current['channel'] = int(value)
+                current['frequency'] = "5GHz" if int(value) > 14 else "2.4GHz"
+
+        return networks
 
     def _scan_airport(self):
         """Scan using airport utility (macOS)."""
@@ -591,11 +693,16 @@ class WiFiScanner:
         else:
             return int(-100 + (percent * 0.7))
 
-    def _generate_demo_data(self):
+    def _generate_demo_data(self, reason=None):
         """
         Generate realistic demo data for testing/demonstration.
         Simulates a coffee shop environment with an Evil Twin attack.
+        `reason` explains why the live scan could not be used; the dashboard
+        shows it to the user.
         """
+        self.last_scan_mode = 'demo'
+        self.last_scan_note = reason or 'No scanning tool or permission was available on this machine.'
+        print(f"[Scanner] Using demo data: {self.last_scan_note}")
         timestamp = datetime.now().isoformat()
 
         demo_networks = [

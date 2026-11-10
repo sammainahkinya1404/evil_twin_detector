@@ -11,8 +11,16 @@ from datetime import datetime
 class Database:
     """Manages SQLite database for the Evil Twin Detector."""
 
-    def __init__(self, db_path='evil_twin_detector.db'):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        # Path can be overridden with the DATABASE_PATH environment variable
+        # (see config.py), which also lets tests use an isolated database.
+        self.db_path = db_path or os.environ.get('DATABASE_PATH', 'evil_twin_detector.db')
+        # Create the schema on construction. Previously this only happened in
+        # app.py's __main__ block, so starting the app any other way
+        # (flask run, gunicorn, a WSGI host) failed with
+        # "sqlite3.OperationalError: no such table: scans".
+        # CREATE TABLE IF NOT EXISTS makes this safe to run every time.
+        self.initialize()
 
     def _connect(self):
         """Create a database connection."""

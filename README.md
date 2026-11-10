@@ -14,6 +14,8 @@ A real-time, behavior-based WiFi security system that detects Evil Twin attacks 
 - [Usage](#usage)
 - [Project Structure](#project-structure)
 - [API Endpoints](#api-endpoints)
+- [Testing](#testing)
+- [Legal and Ethical Use](#legal-and-ethical-use)
 - [Technologies Used](#technologies-used)
 
 ---
@@ -86,7 +88,7 @@ The system uses a **weighted multi-factor scoring system** (0-100):
 |--------|--------|-------------|
 | SSID Duplication | 25 | Multiple APs sharing the same network name |
 | Encryption Mismatch | 20 | Same-name networks with different security (e.g., WPA2 vs Open) |
-| MAC Address Anomaly | 15 | Locally administered bit set, unknown vendor |
+| MAC Address Anomaly | 15 | Locally administered or multicast bit set in the BSSID (the vendor name is shown for information only) |
 | Signal Anomaly | 15 | Unusually strong signal compared to peers |
 | Channel Discrepancy | 10 | Same-name networks on different channels |
 | Open Network | 10 | No encryption detected |
@@ -96,6 +98,9 @@ The system uses a **weighted multi-factor scoring system** (0-100):
 - **LOW (0-30):** Normal network behavior
 - **MEDIUM (31-60):** Suspicious indicators, investigate further  
 - **HIGH (61-100):** Strong Evil Twin indicators, avoid connecting
+
+Two additional indicators add to the score: an encryption or large signal change for the same
+BSSID between scans in the same session (+10) and a hidden network with no encryption (+15).
 
 ---
 
@@ -188,6 +193,45 @@ evil_twin_detector/
 | GET | `/api/statistics` | Get system statistics |
 | GET | `/api/network/<bssid>/history` | Get network history |
 | GET/POST/DELETE | `/api/whitelist` | Manage trusted networks |
+
+---
+
+## Testing
+
+The `tests/` folder holds a `unittest` suite (black-box, white-box, integration,
+scenario, security and performance tests). Every test uses a temporary database,
+so `evil_twin_detector.db` is never modified.
+
+```bash
+pip install -r requirements-dev.txt
+python -m unittest discover -s tests -v          # run all tests
+python -m coverage run -m unittest discover -s tests
+python -m coverage report                        # statement coverage
+```
+
+Two scenario tests are marked as *expected failures*: they document known
+limitations of the scoring model (unique-name honeypots score LOW, and one
+legitimate AP in the multi-vector scenario scores HIGH).
+
+---
+
+## Legal and Ethical Use
+
+- **Passive monitoring only.** EvilTwinGuard reads the network information that access points
+  broadcast publicly (name, BSSID, channel, signal, security type). It does not connect to,
+  attack, decrypt or capture the traffic of any network.
+- **Check the law before you deploy.** Rules on wireless monitoring differ between countries and
+  organisations. Get permission from the network owner or your institution's IT/security office
+  before using the tool on a campus, corporate or government site.
+- **The simulator never transmits.** Attack scenarios are generated as data inside the program.
+  Creating a real fake access point to impersonate someone else's network is illegal in most
+  jurisdictions; do it only in an isolated lab with written authorisation.
+- **Responsible disclosure.** If you find a suspected Evil Twin or a weakness in someone else's
+  network, report it privately to the network operator (or venue staff) and give them time to act
+  before telling anyone else. Do not try to interfere with the suspicious access point yourself.
+- **Protect the scan data.** `evil_twin_detector.db` records the networks seen around you. Keep it
+  on an account only you can access, delete old scans you no longer need, and do not share it
+  outside the people responsible for the network you were asked to assess.
 
 ---
 

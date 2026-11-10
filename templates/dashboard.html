@@ -32,6 +32,10 @@
             <div class="sim-dropdown-header">
                 <h3>Attack Scenarios</h3>
                 <p>Select a scenario to simulate fake threats for testing</p>
+                <p class="sim-legal" role="note">
+                    Simulated data only &mdash; nothing is transmitted. Creating a real fake access point
+                    is illegal in most countries unless you have written authorisation for an isolated lab.
+                </p>
             </div>
             <div class="sim-scenarios" id="simScenarios">
                 <!-- Filled by JS -->
@@ -105,6 +109,12 @@
             <span class="stat-label">Total Scans</span>
         </div>
     </div>
+</section>
+
+<!-- Data Source Notice (shown when results are demo or simulated, not a live scan) -->
+<section class="mode-notice" id="modeNotice" role="status" style="display:none;">
+    <strong id="modeNoticeTitle"></strong>
+    <span id="modeNoticeText"></span>
 </section>
 
 <!-- Threat Summary Banner -->

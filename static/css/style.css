@@ -317,6 +317,25 @@ body {
 .stat-card-success .stat-value { color: var(--green); }
 
 /* ─── Threat Banner ─── */
+.mode-notice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: baseline;
+    padding: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--border-light);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.mode-notice strong { color: var(--text-primary); }
+.mode-notice.mode-demo { border-color: var(--amber-dim); }
+.mode-notice.mode-demo strong { color: var(--amber); }
+.mode-notice.mode-simulation strong { color: var(--cyan); }
+
 .threat-banner {
     border-radius: var(--radius);
     padding: 1.25rem 1.5rem;
@@ -759,6 +778,14 @@ body {
 .sim-dropdown-header { margin-bottom: 1rem; }
 .sim-dropdown-header h3 { font-size: 1rem; font-weight: 600; color: var(--amber); }
 .sim-dropdown-header p { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.15rem; }
+.sim-dropdown-header .sim-legal {
+    margin-top: 0.6rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--amber-dim);
+    background: var(--amber-glow);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+}
 
 .sim-scenarios {
     display: grid;
