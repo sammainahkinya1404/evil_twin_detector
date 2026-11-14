@@ -1,11 +1,19 @@
 """
 Database Module - SQLite storage for scan history, alerts, and whitelist.
+
+Every scan and every whitelist entry belongs to a client (client_id). When the
+app runs on a user's own computer there is a single client, 'local'. When it
+is hosted for many visitors, each browser gets its own client_id, so visitors
+never see each other's scans and cannot trust a network on someone else's
+behalf (which would let an attacker "whitelist" their own Evil Twin).
 """
 
 import sqlite3
 import json
 import os
 from datetime import datetime
+
+LOCAL = 'local'
 
 
 class Database:
@@ -29,8 +37,14 @@ class Database:
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
 
+    _TABLE_INFO = {'scans': 'PRAGMA table_info(scans)', 'whitelist': 'PRAGMA table_info(whitelist)'}
+
+    @classmethod
+    def _columns(cls, cursor, table):
+        return {row[1] for row in cursor.execute(cls._TABLE_INFO[table])}
+
     def initialize(self):
-        """Create database tables if they don't exist."""
+        """Create database tables if they don't exist, and upgrade older databases."""
         conn = self._connect()
         cursor = conn.cursor()
 
@@ -43,7 +57,8 @@ class Database:
                 high_risk_count INTEGER DEFAULT 0,
                 medium_risk_count INTEGER DEFAULT 0,
                 low_risk_count INTEGER DEFAULT 0,
-                threat_level TEXT DEFAULT 'safe'
+                threat_level TEXT DEFAULT 'safe',
+                client_id TEXT NOT NULL DEFAULT 'local'
             );
 
             -- Individual network observations
@@ -78,28 +93,54 @@ class Database:
                 FOREIGN KEY (scan_id) REFERENCES scans (id)
             );
 
-            -- Trusted networks whitelist
+            -- Trusted networks whitelist (one list per client)
             CREATE TABLE IF NOT EXISTS whitelist (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                bssid TEXT UNIQUE NOT NULL,
+                client_id TEXT NOT NULL DEFAULT 'local',
+                bssid TEXT NOT NULL,
                 ssid TEXT,
                 added_date TEXT,
-                notes TEXT
+                notes TEXT,
+                UNIQUE (client_id, bssid)
             );
+        ''')
 
+        # Upgrade databases created before clients existed
+        if 'client_id' not in self._columns(cursor, 'scans'):
+            cursor.execute("ALTER TABLE scans ADD COLUMN client_id TEXT NOT NULL DEFAULT 'local'")
+        if 'client_id' not in self._columns(cursor, 'whitelist'):
+            # The old table had UNIQUE(bssid); SQLite cannot drop a constraint, so rebuild it.
+            cursor.executescript('''
+                CREATE TABLE whitelist_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id TEXT NOT NULL DEFAULT 'local',
+                    bssid TEXT NOT NULL,
+                    ssid TEXT,
+                    added_date TEXT,
+                    notes TEXT,
+                    UNIQUE (client_id, bssid)
+                );
+                INSERT INTO whitelist_new (id, client_id, bssid, ssid, added_date, notes)
+                    SELECT id, 'local', bssid, ssid, added_date, notes FROM whitelist;
+                DROP TABLE whitelist;
+                ALTER TABLE whitelist_new RENAME TO whitelist;
+            ''')
+
+        cursor.executescript('''
             -- Indexes for performance
             CREATE INDEX IF NOT EXISTS idx_networks_scan_id ON networks(scan_id);
             CREATE INDEX IF NOT EXISTS idx_networks_bssid ON networks(bssid);
             CREATE INDEX IF NOT EXISTS idx_networks_ssid ON networks(ssid);
             CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts(timestamp);
             CREATE INDEX IF NOT EXISTS idx_scans_timestamp ON scans(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_scans_client ON scans(client_id);
         ''')
 
         conn.commit()
         conn.close()
         print("[Database] Initialized successfully")
 
-    def save_scan(self, analyzed_networks):
+    def save_scan(self, analyzed_networks, client_id=LOCAL):
         """Save a complete scan session with all detected networks."""
         conn = self._connect()
         cursor = conn.cursor()
@@ -115,9 +156,9 @@ class Database:
         # Insert scan session
         cursor.execute('''
             INSERT INTO scans (timestamp, total_networks, high_risk_count,
-                             medium_risk_count, low_risk_count, threat_level)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (timestamp, len(analyzed_networks), high, medium, low, threat))
+                             medium_risk_count, low_risk_count, threat_level, client_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (timestamp, len(analyzed_networks), high, medium, low, threat, client_id))
 
         scan_id = cursor.lastrowid
 
@@ -168,86 +209,91 @@ class Database:
         conn.close()
         return scan_id
 
-    def get_statistics(self):
-        """Get overall system statistics."""
+    def get_statistics(self, client_id=LOCAL):
+        """Get statistics for one client."""
         conn = self._connect()
         cursor = conn.cursor()
 
         stats = {}
 
-        # Total scans
-        cursor.execute('SELECT COUNT(*) as count FROM scans')
+        cursor.execute('SELECT COUNT(*) as count FROM scans WHERE client_id = ?', (client_id,))
         stats['total_scans'] = cursor.fetchone()['count']
 
-        # Total unique networks seen
-        cursor.execute('SELECT COUNT(DISTINCT bssid) as count FROM networks')
+        cursor.execute('''
+            SELECT COUNT(DISTINCT n.bssid) as count FROM networks n
+            JOIN scans s ON s.id = n.scan_id WHERE s.client_id = ?
+        ''', (client_id,))
         stats['unique_networks'] = cursor.fetchone()['count']
 
-        # Total alerts
-        cursor.execute('SELECT COUNT(*) as count FROM alerts')
+        cursor.execute('''
+            SELECT COUNT(*) as count FROM alerts a
+            JOIN scans s ON s.id = a.scan_id WHERE s.client_id = ?
+        ''', (client_id,))
         stats['total_alerts'] = cursor.fetchone()['count']
 
-        # High risk detections
-        cursor.execute("SELECT COUNT(*) as count FROM alerts WHERE risk_level='high'")
+        cursor.execute('''
+            SELECT COUNT(*) as count FROM alerts a
+            JOIN scans s ON s.id = a.scan_id WHERE s.client_id = ? AND a.risk_level = 'high'
+        ''', (client_id,))
         stats['high_risk_detections'] = cursor.fetchone()['count']
 
-        # Most recent scan
-        cursor.execute('SELECT timestamp FROM scans ORDER BY id DESC LIMIT 1')
+        cursor.execute('SELECT timestamp FROM scans WHERE client_id = ? ORDER BY id DESC LIMIT 1',
+                       (client_id,))
         row = cursor.fetchone()
         stats['last_scan'] = row['timestamp'] if row else None
 
-        # Risk distribution
         cursor.execute('''
-            SELECT risk_level, COUNT(*) as count 
-            FROM networks 
-            GROUP BY risk_level
-        ''')
+            SELECT n.risk_level, COUNT(*) as count FROM networks n
+            JOIN scans s ON s.id = n.scan_id WHERE s.client_id = ?
+            GROUP BY n.risk_level
+        ''', (client_id,))
         stats['risk_distribution'] = {row['risk_level']: row['count'] for row in cursor.fetchall()}
 
         conn.close()
         return stats
 
-    def get_recent_alerts(self, limit=10):
-        """Get most recent alerts."""
+    def get_recent_alerts(self, limit=10, client_id=LOCAL):
+        """Get a client's most recent alerts."""
         conn = self._connect()
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT * FROM alerts 
-            ORDER BY timestamp DESC 
+            SELECT a.* FROM alerts a JOIN scans s ON s.id = a.scan_id
+            WHERE s.client_id = ?
+            ORDER BY a.timestamp DESC
             LIMIT ?
-        ''', (limit,))
+        ''', (client_id, limit))
 
         alerts = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return alerts
 
-    def get_scan_history(self, limit=50):
-        """Get scan session history."""
+    def get_scan_history(self, limit=50, client_id=LOCAL):
+        """Get a client's scan session history."""
         conn = self._connect()
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT * FROM scans 
-            ORDER BY timestamp DESC 
+            SELECT * FROM scans WHERE client_id = ?
+            ORDER BY timestamp DESC
             LIMIT ?
-        ''', (limit,))
+        ''', (client_id, limit))
 
         scans = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return scans
 
-    def get_network_details(self, bssid):
-        """Get detailed information about a specific network."""
+    def get_network_details(self, bssid, client_id=LOCAL):
+        """Get the latest observation of a network in one client's scans."""
         conn = self._connect()
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT * FROM networks 
-            WHERE bssid = ? 
-            ORDER BY timestamp DESC 
+            SELECT n.* FROM networks n JOIN scans s ON s.id = n.scan_id
+            WHERE n.bssid = ? AND s.client_id = ?
+            ORDER BY n.timestamp DESC
             LIMIT 1
-        ''', (bssid,))
+        ''', (bssid, client_id))
 
         row = cursor.fetchone()
         if row:
@@ -259,53 +305,54 @@ class Database:
         conn.close()
         return None
 
-    def get_network_history(self, bssid):
-        """Get historical observations of a specific network."""
+    def get_network_history(self, bssid, client_id=LOCAL):
+        """Get one client's historical observations of a network."""
         conn = self._connect()
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT signal_strength, encryption, channel, risk_score, timestamp 
-            FROM networks 
-            WHERE bssid = ? 
-            ORDER BY timestamp DESC 
+            SELECT n.signal_strength, n.encryption, n.channel, n.risk_score, n.timestamp
+            FROM networks n JOIN scans s ON s.id = n.scan_id
+            WHERE n.bssid = ? AND s.client_id = ?
+            ORDER BY n.timestamp DESC
             LIMIT 100
-        ''', (bssid,))
+        ''', (bssid, client_id))
 
         history = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return history
 
-    def get_whitelist(self):
-        """Get all whitelisted networks."""
+    def get_whitelist(self, client_id=LOCAL):
+        """Get a client's whitelisted networks."""
         conn = self._connect()
         cursor = conn.cursor()
 
-        cursor.execute('SELECT * FROM whitelist ORDER BY added_date DESC')
+        cursor.execute('SELECT * FROM whitelist WHERE client_id = ? ORDER BY added_date DESC',
+                       (client_id,))
         whitelist = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return whitelist
 
-    def add_to_whitelist(self, bssid, ssid='', notes=''):
-        """Add a network to the trusted whitelist."""
+    def add_to_whitelist(self, bssid, ssid='', notes='', client_id=LOCAL):
+        """Add a network to a client's trusted whitelist."""
         conn = self._connect()
         cursor = conn.cursor()
 
         try:
             cursor.execute('''
-                INSERT OR REPLACE INTO whitelist (bssid, ssid, added_date, notes)
-                VALUES (?, ?, ?, ?)
-            ''', (bssid, ssid, datetime.now().isoformat(), notes))
+                INSERT OR REPLACE INTO whitelist (client_id, bssid, ssid, added_date, notes)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (client_id, bssid, ssid, datetime.now().isoformat(), notes))
             conn.commit()
         except sqlite3.IntegrityError:
             pass
 
         conn.close()
 
-    def remove_from_whitelist(self, bssid):
-        """Remove a network from the whitelist."""
+    def remove_from_whitelist(self, bssid, client_id=LOCAL):
+        """Remove a network from a client's whitelist."""
         conn = self._connect()
         cursor = conn.cursor()
-        cursor.execute('DELETE FROM whitelist WHERE bssid = ?', (bssid,))
+        cursor.execute('DELETE FROM whitelist WHERE bssid = ? AND client_id = ?', (bssid, client_id))
         conn.commit()
         conn.close()

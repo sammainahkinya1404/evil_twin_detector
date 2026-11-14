@@ -873,3 +873,123 @@ body {
 @media (max-width: 480px) {
     .stats-grid { grid-template-columns: 1fr; }
 }
+
+/* ───────── Hosted version: action row, paste-a-scan dialog, connection check ───────── */
+.panel-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+}
+.panel-actions .sim-panel { display: contents; }          /* button and dropdown join the row */
+.panel-actions .sim-dropdown { flex-basis: 100%; order: 10; margin-top: 0.25rem; }
+
+.btn-action {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: 1px dashed var(--cyan-dim);
+    border-radius: var(--radius-sm);
+    color: var(--cyan);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.btn-action:hover { background: var(--cyan-glow); border-style: solid; }
+.btn-action:disabled { opacity: 0.5; cursor: wait; }
+
+.btn-scan:disabled { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.6); }
+
+.hosted-note {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid var(--cyan-dim);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.55;
+}
+.hosted-note strong { color: var(--text-primary); }
+
+.conn-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+    animation: slideDown 0.4s ease;
+}
+.conn-section .section-header { display: flex; justify-content: space-between; align-items: center; }
+.conn-close { position: static; }
+.conn-grid { margin-top: 0.75rem; }
+.conn-grid .detail-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.88rem;
+}
+.conn-grid .detail-row > span:first-child { color: var(--text-secondary); }
+.conn-grid .detail-row > span:last-child { text-align: right; }
+.conn-finding {
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    margin-bottom: 0.6rem;
+    border-left: 3px solid;
+}
+.conn-finding p { margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; }
+.conn-ok { background: var(--green-glow); border-color: var(--green-dim); }
+.conn-ok strong { color: var(--green); }
+.conn-warning { background: var(--amber-glow); border-color: var(--amber-dim); }
+.conn-warning strong { color: var(--amber); }
+.conn-flag { font-weight: 600; }
+.conn-yes { color: var(--amber); }
+.conn-no { color: var(--green); }
+
+.paste-modal { max-width: 720px; }
+.paste-intro { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.55; margin-bottom: 1rem; }
+.paste-tabs { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.paste-steps ol { padding-left: 1.2rem; color: var(--text-secondary); font-size: 0.88rem; line-height: 1.6; }
+.paste-steps strong, .paste-steps em { color: var(--text-primary); }
+.paste-command {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.6rem 0;
+    padding: 0.6rem 0.8rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+}
+.paste-command code {
+    flex: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--cyan);
+    overflow-wrap: anywhere;
+}
+.paste-note { color: var(--text-muted); font-size: 0.8rem; margin: 0.5rem 0; line-height: 1.5; }
+.paste-text {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    resize: vertical;
+}
+.paste-text:focus { outline: 2px solid var(--cyan-dim); outline-offset: 1px; }
+.paste-error { color: var(--red); font-size: 0.85rem; min-height: 1.2rem; margin: 0.5rem 0; }
+.paste-submit { margin-top: 0.25rem; }

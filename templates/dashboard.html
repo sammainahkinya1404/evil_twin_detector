@@ -10,16 +10,18 @@
             <h1 class="page-title">Network Scanner</h1>
             <p class="page-subtitle">Real-time WiFi threat detection & Evil Twin analysis</p>
         </div>
-        <button class="btn-scan" id="btnScan" onclick="startScan()">
+        <button class="btn-scan" id="btnScan" onclick="startScan()"
+                {% if not live_scan %}disabled title="This server has no Wi-Fi radio. Use Paste a Scan, Check My Connection or Simulate Attack."{% endif %}>
             <svg class="scan-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="1"/>
                 <path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5z"/>
                 <path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5z"/>
             </svg>
-            <span id="btnScanText">Start Scan</span>
+            <span id="btnScanText">{{ 'Start Scan' if live_scan else 'Live Scan Unavailable Online' }}</span>
         </button>
     </div>
 
+    <div class="panel-actions">
     <!-- Simulation Mode Panel -->
     <div class="sim-panel">
         <button class="btn-sim-toggle" onclick="toggleSimPanel()">
@@ -43,6 +45,32 @@
             </div>
         </div>
     </div>
+
+    <button class="btn-action" id="btnPaste" onclick="openPasteModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="8" y="2" width="8" height="4" rx="1"/>
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+        </svg>
+        Paste a Scan
+    </button>
+    <button class="btn-action" id="btnConnection" onclick="runConnectionCheck()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <circle cx="12" cy="20" r="1"/>
+        </svg>
+        Check My Connection
+    </button>
+    </div>
+
+    {% if not live_scan %}
+    <p class="hosted-note" role="note">
+        <strong>Why there is no live scan here:</strong> this website runs on a server in a data centre, which has
+        no Wi-Fi radio, and browsers do not let websites read the list of nearby Wi-Fi networks. To check the
+        networks around you, use <strong>Paste a Scan</strong> (one command on your computer, nothing to install).
+        <strong>Check My Connection</strong> tests the connection you are using right now. For fully automatic
+        scanning, run EvilTwinGuard on your own computer.
+    </p>
+    {% endif %}
 
     <!-- Scanning Animation -->
     <div class="scan-animation" id="scanAnimation" style="display:none;">
@@ -117,6 +145,15 @@
     <span id="modeNoticeText"></span>
 </section>
 
+<!-- Connection Check -->
+<section class="conn-section" id="connSection" style="display:none;" aria-live="polite">
+    <div class="section-header">
+        <h2>Connection Check</h2>
+        <button class="modal-close conn-close" onclick="document.getElementById('connSection').style.display='none'" aria-label="Close">&times;</button>
+    </div>
+    <div id="connBody"></div>
+</section>
+
 <!-- Threat Summary Banner -->
 <section class="threat-banner" id="threatBanner" style="display:none;">
     <div class="threat-content">
@@ -188,6 +225,28 @@
     </div>
 </div>
 
+<!-- Paste a Scan Modal -->
+<div class="modal-overlay" id="pasteModal" style="display:none;" onclick="closePasteModal(event)">
+    <div class="modal-content paste-modal" role="dialog" aria-labelledby="pasteTitle" onclick="event.stopPropagation()">
+        <button class="modal-close" onclick="closePasteModal()" aria-label="Close">&times;</button>
+        <div class="modal-header"><h2 id="pasteTitle">Paste a Wi-Fi Scan</h2></div>
+        <div class="modal-body">
+            <p class="paste-intro">Your browser cannot scan Wi-Fi for this website, but your computer can. Run one
+                command, copy everything it prints, and paste it below. Only the list of networks is sent.</p>
+            <div class="paste-tabs" role="tablist">
+                <button class="filter-btn active" data-os="windows" onclick="setPasteTab('windows')">Windows</button>
+                <button class="filter-btn" data-os="linux" onclick="setPasteTab('linux')">Linux</button>
+                <button class="filter-btn" data-os="mac" onclick="setPasteTab('mac')">macOS</button>
+            </div>
+            <div class="paste-steps" id="pasteSteps"></div>
+            <textarea id="pasteText" class="paste-text" rows="9" maxlength="200000" spellcheck="false"
+                      placeholder="Paste the command output here..."></textarea>
+            <p class="paste-error" id="pasteError" role="alert"></p>
+            <button class="btn-scan paste-submit" id="pasteSubmit" onclick="submitPastedScan()">Analyse Networks</button>
+        </div>
+    </div>
+</div>
+
 <!-- Recent Alerts -->
 <section class="alerts-section">
     <div class="section-header">
@@ -215,4 +274,8 @@
         {% endif %}
     </div>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>window.ETG_HOSTED = {{ "true" if hosted else "false" }};</script>
 {% endblock %}

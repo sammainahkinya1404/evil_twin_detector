@@ -196,6 +196,28 @@ evil_twin_detector/
 
 ---
 
+## Hosted Version (e.g. Render)
+
+A website cannot scan Wi-Fi: the server runs in a data centre with no Wi-Fi radio, and browsers do
+not let web pages read the list of nearby networks. When the app is hosted (detected through Render's
+`RENDER` environment variable, or by setting `EVILTWIN_HOSTED=1`), it therefore offers:
+
+- **Paste a Scan** - the visitor runs one command on their own computer and pastes the output:
+  - Windows: `netsh wlan show networks mode=bssid`
+  - Linux: `nmcli -t -f SSID,BSSID,CHAN,FREQ,SIGNAL,SECURITY device wifi list --rescan yes`
+  The networks are analysed by the same detection engine as a live scan.
+- **Check My Connection** - automatic, nothing to install: looks up who provides the visitor's
+  internet connection (ip-api.com; flags mobile networks, VPNs/proxies and data centres) and measures
+  delay and download speed to the server.
+- **Simulate Attack** - the six attack scenarios.
+
+Each browser gets its own anonymous id (cookie), so visitors only see their own results, history and
+trusted networks. Start Scan is disabled with an explanation. For fully automatic scanning, run the
+app on your own computer (`python app.py`). The server logs its network interfaces at start-up
+(`[Server] ... wireless: none` on Render).
+
+---
+
 ## Testing
 
 The `tests/` folder holds a `unittest` suite (black-box, white-box, integration,
