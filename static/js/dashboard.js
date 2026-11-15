@@ -173,7 +173,10 @@ function renderNetworks(networks) {
             <tr class="empty-row">
                 <td colspan="9">
                     <div class="empty-state">
-                        <p>${currentFilter !== 'all' ? 'No ' + currentFilter + ' risk networks found.' : 'No networks scanned yet. Click <strong>Start Scan</strong> to begin.'}</p>
+                        <p>${currentFilter !== 'all' ? 'No ' + currentFilter + ' risk networks found.'
+                            : (window.ETG_LIVE_SCAN === false
+                                ? 'No networks yet. Use <strong>Paste a Scan</strong> or <strong>Simulate Attack</strong> to begin.'
+                                : 'No networks scanned yet. Click <strong>Start Scan</strong> to begin.')}</p>
                     </div>
                 </td>
             </tr>`;
@@ -765,6 +768,14 @@ async function measureDownload(kb = 1024, runs = 2) {
     return (bytes * 8) / seconds / 1e6;            // Mbit/s
 }
 
+// How the server learned the visitor's address (shown next to it in plain language)
+const IP_SOURCE_LABELS = {
+    'proxy': 'as seen by this website',
+    'forwarded (unverified)': 'from a forwarded header, unverified',
+    'direct': 'direct connection',
+    'this computer': "this computer's public address",
+};
+
 function yesNo(value) {
     if (value === true) return '<span class="conn-flag conn-yes">Yes</span>';
     if (value === false) return '<span class="conn-flag conn-no">No</span>';
@@ -786,7 +797,7 @@ async function runConnectionCheck() {
         const lk = info.lookup || {};
         const routed = lk.error ? undefined : Boolean(lk.proxy || lk.hosting);
         const rows = [
-            ['Public IP address', `${escapeHtml(info.ip || 'Unknown')} <span class="text-muted">(${escapeHtml(info.ip_source || '')})</span>`],
+            ['Public IP address', `${escapeHtml(info.ip || 'Unknown')} <span class="text-muted">(${escapeHtml(IP_SOURCE_LABELS[info.ip_source] || info.ip_source || '')})</span>`],
             ['Internet provider', lk.error ? `<span class="text-muted">${escapeHtml(lk.error)}</span>` : escapeHtml(lk.isp || 'Unknown')],
             ['Organisation / network', escapeHtml([lk.org, lk.as].filter(Boolean).join(' - ') || 'Unknown')],
             ['Location of that address', escapeHtml([lk.city, lk.country].filter(Boolean).join(', ') || 'Unknown')],

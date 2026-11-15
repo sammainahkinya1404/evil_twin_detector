@@ -202,7 +202,7 @@
                                 <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
                                 <circle cx="12" cy="20" r="1"/>
                             </svg>
-                            <p>No networks scanned yet. Click <strong>Start Scan</strong> to begin.</p>
+                            <p>{% if live_scan %}No networks scanned yet. Click <strong>Start Scan</strong> to begin.{% else %}No networks yet. Use <strong>Paste a Scan</strong> or <strong>Simulate Attack</strong> to begin.{% endif %}</p>
                         </div>
                     </td>
                 </tr>
@@ -277,5 +277,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script>window.ETG_HOSTED = {{ "true" if hosted else "false" }};</script>
+<script>window.ETG_HOSTED = {{ "true" if hosted else "false" }}; window.ETG_LIVE_SCAN = {{ "true" if live_scan else "false" }};</script>
 {% endblock %}

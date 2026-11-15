@@ -118,6 +118,7 @@ class HostedApp(unittest.TestCase):
         self.assertIn('Live Scan Unavailable Online', html)
         self.assertIn('Why there is no live scan here', html)
         self.assertIn('Paste a Scan', html)
+        self.assertNotIn('Click <strong>Start Scan</strong> to begin', html)   # no hint to use the disabled button
 
     def test_hm10_connection_info_uses_visitor_ip(self):
         """HM-10 /api/connection/info looks up the visitor's IP from True-Client-IP"""
